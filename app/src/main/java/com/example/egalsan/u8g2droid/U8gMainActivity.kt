@@ -10,6 +10,8 @@ import android.util.Log
 import android.content.DialogInterface
 import android.support.v7.app.AlertDialog
 import android.bluetooth.BluetoothSocket
+import android.support.design.widget.BottomNavigationView
+import kotlinx.android.synthetic.main.activity_u8g_main.*
 import java.io.IOException
 import java.util.*
 
@@ -29,9 +31,30 @@ class U8gMainActivity : AppCompatActivity() {
     private val mUuid: UUID = UUID.fromString(MY_UUID)
 
 
+    private val mOnNavigationItemSelectedListener = BottomNavigationView.OnNavigationItemSelectedListener { item ->
+        when (item.itemId) {
+            R.id.navigation_home -> {
+                // TODO: message.setText(R.string.title_home)
+                return@OnNavigationItemSelectedListener true
+            }
+            R.id.navigation_dashboard -> {
+                // TODO: message.setText(R.string.title_dashboard)
+                return@OnNavigationItemSelectedListener true
+            }
+            R.id.navigation_notifications -> {
+                // TODO: message.setText(R.string.title_notifications)
+                return@OnNavigationItemSelectedListener true
+            }
+        }
+        false
+    }
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(R.layout.activity_u8g_main)
+
+        navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener)
 
         // Make sure Bluetooth is available
         if (! assertBluetoothIsAvailable()) {
