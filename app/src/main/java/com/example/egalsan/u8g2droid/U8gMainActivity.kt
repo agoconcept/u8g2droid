@@ -39,23 +39,14 @@ class U8gMainActivity : AppCompatActivity() {
             finish()
         }
 
-        startBT()
-    }
-
-
-    private fun startBT() {
-        // Read stored settings
-        val settings = getSharedPreferences(PREFS_NAME, 0)
-        val deviceName = settings.getString("deviceName", null)
-        val deviceMac = settings.getString("deviceMac", null)
-
-        if (deviceName == null || deviceMac == null) {
-            Log.v(LOG_TAG, "No previous device found, selecting a Bluetooth device to connect to")
-            selectBluetoothDevice()
+        // Make sure Bluetooth is enabled
+        if (! mBluetoothAdapter!!.isEnabled) {
+            Log.i(LOG_TAG, "Bluetooth is not enabled, trying to enable it")
+            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
         } else {
-            // Start Bluetooth connection, trying to reconnect to the stored device
-            Log.v(LOG_TAG, "Previous device found, trying to reconnect to Bluetooth device")
-            startBluetoothConnection(deviceName, deviceMac)
+            Log.i(LOG_TAG, "Bluetooth is enabled, trying to connect to a device")
+            startBT()
         }
     }
 
@@ -79,11 +70,32 @@ class U8gMainActivity : AppCompatActivity() {
 
 
     /**
+     * Handle the Bluetooth initialization
+     */
+    private fun startBT() {
+        // Read stored settings
+        val settings = getSharedPreferences(PREFS_NAME, 0)
+        val deviceName = settings.getString("deviceName", null)
+        val deviceMac = settings.getString("deviceMac", null)
+
+        if (deviceName == null || deviceMac == null) {
+            Log.v(LOG_TAG, "No previous device found, selecting a Bluetooth device to connect to")
+            selectBluetoothDevice()
+        } else {
+            // Start Bluetooth connection, trying to reconnect to the stored device
+            Log.v(LOG_TAG, "Previous device found, trying to reconnect to Bluetooth device")
+            startBluetoothConnection(deviceName, deviceMac)
+        }
+    }
+
+
+    /**
      * Make sure that Bluetooth is available
      */
     private fun assertBluetoothIsAvailable(): Boolean {
         return mBluetoothAdapter != null
     }
+
 
     /**
      * Start a bluetooth connection to the selected device
@@ -91,25 +103,17 @@ class U8gMainActivity : AppCompatActivity() {
     private fun startBluetoothConnection(deviceName: String?, deviceMac: String?) {
         // TODO: Consider adding a broadcastreceiver in case Bluetooth status changes
 
-        // Make sure Bluetooth is enabled
-        if (! mBluetoothAdapter!!.isEnabled) {
-            Log.i(LOG_TAG, "Bluetooth is not enabled, trying to enable it")
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
-        } else {
-            Log.i(LOG_TAG, "Bluetooth is enabled")
-            // Start connection as client
-            val bondedDevices = mBluetoothAdapter!!.bondedDevices
-            val btDevice = getBluetoothDevice(deviceName, bondedDevices)
-            val btThread = U8gConnectThread(btDevice!!)
-            btThread.start()
+        // Start connection as client
+        val bondedDevices = mBluetoothAdapter!!.bondedDevices
+        val btDevice = getBluetoothDevice(deviceName, bondedDevices)
+        val btThread = U8gConnectThread(btDevice!!)
+        btThread.start()
 
-            Log.i(LOG_TAG, "Trying to setup Bluetooth connection with '" + deviceName + "' at " + deviceMac)
-            Toast.makeText(
-                    this,
-                    "Trying to setup Bluetooth connection with '" + deviceName + "' at " + deviceMac,
-                    Toast.LENGTH_SHORT).show()
-        }
+        Log.i(LOG_TAG, "Trying to setup Bluetooth connection with '" + deviceName + "' at " + deviceMac)
+        Toast.makeText(
+                this,
+                "Trying to setup Bluetooth connection with '" + deviceName + "' at " + deviceMac,
+                Toast.LENGTH_SHORT).show()
     }
 
 
@@ -134,7 +138,7 @@ class U8gMainActivity : AppCompatActivity() {
         val iter = bondedDevices.iterator()
         while (iter.hasNext()) {
             val device = iter.next()
-            if (device.name.equals(deviceName))
+            if (device.name == deviceName)
                 return device
         }
         return null
