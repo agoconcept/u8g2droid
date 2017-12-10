@@ -14,8 +14,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".U8gMainActivity"
-            android:label="@string/title_activity_u8g_main">
+            android:name=".U8gMainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
