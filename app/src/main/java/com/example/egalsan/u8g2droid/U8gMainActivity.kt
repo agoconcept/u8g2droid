@@ -15,6 +15,8 @@ import kotlinx.android.synthetic.main.activity_u8g_main.*
 import java.io.IOException
 import java.util.*
 import android.os.Looper
+import java.io.InputStream
+import java.io.OutputStream
 
 
 class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
@@ -22,8 +24,8 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
     companion object {
         const val LOG_TAG: String = "U8gMainActivity"
         const val REQUEST_ENABLE_BT: Int = 1337
-        const val PREFS_NAME = "u8g2droid"
-        const val MY_UUID = "00001101-0000-1000-8000-00805F9B34FB"
+        const val PREFS_NAME: String = "u8g2droid"
+        const val MY_UUID: String = "00001101-0000-1000-8000-00805F9B34FB"
     }
 
     private val mBluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
@@ -212,12 +214,12 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
     }
 
 
-    override fun success() {
+    override fun connectionSuccess() {
         Log.i(LOG_TAG, "Successfully connected to Bluetooth device")
         Toast.makeText(this, "Successfully connected to Bluetooth device", Toast.LENGTH_SHORT).show()
     }
 
-    override fun error() {
+    override fun connectionError() {
         // Clean the information about the stored device, so next time it will
         // ask for the device to connect to again
         storeDeviceInfo(null, null)
@@ -229,25 +231,42 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         startBT()
     }
 
+    override fun readData(data: String?) {
+        Log.d(LOG_TAG, data)
+        // TODO: Do more :)
+    }
+
+    override fun writeData(data: String?) {
+        // TODO: Not implemented
+    }
 
     private inner class U8gConnectThread(private val device: BluetoothDevice, private val btCallback: U8gBluetoothCallbacks) : Thread() {
         private val socket: BluetoothSocket?
+        private val inStream: InputStream?
+        private val outStream: OutputStream?
+
         private val handler = Handler(Looper.getMainLooper())
 
         init {
-            // Use a temporary object that is later assigned to socket
-            // because socket is final.
-            var tmp: BluetoothSocket? = null
+            // Use temporary objects that are later assigned variables are final
+            var tmpSocket: BluetoothSocket? = null
+            var tmpInStream: InputStream? = null
+            var tmpOutStream: OutputStream? = null
 
             try {
                 // Get a BluetoothSocket to connect with the given BluetoothDevice.
                 // MY_UUID is the app's UUID string, also used in the server code.
-                tmp = device.createRfcommSocketToServiceRecord(mUuid)
+                tmpSocket = device.createRfcommSocketToServiceRecord(mUuid)
+
+                tmpInStream = tmpSocket.inputStream
+                tmpOutStream = tmpSocket.outputStream
             } catch (e: IOException) {
-                Log.e(LOG_TAG, "Socket's create() method failed", e)
+                Log.e(LOG_TAG, "Bluetooth socket IO failed", e)
             }
 
-            socket = tmp
+            socket = tmpSocket
+            inStream = tmpInStream
+            outStream = tmpOutStream
         }
 
         override fun run() {
@@ -262,7 +281,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
                 // Unable to connect; close the socket and return.
                 try {
                     // Run on the UI thead
-                    handler.post { btCallback.error() }
+                    handler.post { btCallback.connectionError() }
 
                     socket!!.close()
 
@@ -274,11 +293,29 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
             }
 
             // Run on the UI thread
-            handler.post { btCallback.success() }
+            handler.post { btCallback.connectionSuccess() }
 
-            // The connection attempt succeeded. Perform work associated with
-            // the connection in a separate thread.
-            // TODO: manageMyConnectedSocket(socket)
+            // Start the read loop
+            readLoop()
+        }
+
+        private fun readLoop() {
+            val buffer = ByteArray(10240)
+            var numBytes: Int // bytes returned from read()
+
+            // Keep listening to the InputStream until an exception occurs.
+            while (true) {
+                try {
+                    // Read from the InputStream.
+                    numBytes = inStream!!.read(buffer)
+
+                    // Send message to the UI thread
+                    handler.post { btCallback.readData(String(buffer, 0, numBytes)) }
+                } catch (e: IOException) {
+                    Log.d(LOG_TAG, "Input stream was disconnected", e)
+                    break
+                }
+            }
         }
 
         // Closes the client socket and causes the thread to finish.
