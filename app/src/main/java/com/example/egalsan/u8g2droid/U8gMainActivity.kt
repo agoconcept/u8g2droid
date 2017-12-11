@@ -278,6 +278,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
                 // until it succeeds or throws an exception.
                 socket!!.connect()
             } catch (connectException: IOException) {
+                Log.e(LOG_TAG, "Could not connect the client socket", connectException)
                 // Unable to connect; close the socket and return.
                 try {
                     // Run on the UI thead
