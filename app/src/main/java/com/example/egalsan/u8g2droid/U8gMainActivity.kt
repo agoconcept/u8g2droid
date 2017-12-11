@@ -23,8 +23,6 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         const val LOG_TAG: String = "U8gMainActivity"
         const val REQUEST_ENABLE_BT: Int = 1337
         const val PREFS_NAME = "u8g2droid"
-        //TODO: const val MY_UUID = "093380fb-fc88-4b0c-930c-d1c10947ec1e"
-        //TODO: Maybe use 00001101-0000-1000-8000-00805F9B34FB (from createRfcommSocketToServiceRecord() documentation)
         const val MY_UUID = "00001101-0000-1000-8000-00805F9B34FB"
     }
 
@@ -68,7 +66,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         // This is executed when Bluetooth is enabled
         if (requestCode == REQUEST_ENABLE_BT) {
             if (resultCode == RESULT_OK) {
-                Log.v(LOG_TAG, "Bluetooth enabled successfully")
+                Log.i(LOG_TAG, "Bluetooth enabled successfully")
                 Toast.makeText(this, "Bluetooth enabled successfully", Toast.LENGTH_SHORT).show()
                 startBT()
             } else if (resultCode == RESULT_CANCELED) {
@@ -86,17 +84,18 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
     private fun startBT() {
         // Make sure Bluetooth is available
         if (! assertBluetoothIsAvailable()) {
+            Log.e(LOG_TAG, "The device does not support Bluetooth, exiting...")
             Toast.makeText(this, "The device does not support Bluetooth, exiting...", Toast.LENGTH_SHORT).show()
             finish()
         }
 
         // Make sure Bluetooth is enabled
         if (! mBluetoothAdapter!!.isEnabled) {
-            Log.i(LOG_TAG, "Bluetooth is not enabled, trying to enable it")
+            Log.d(LOG_TAG, "Bluetooth is not enabled, trying to enable it")
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
         } else {
-            Log.i(LOG_TAG, "Bluetooth is enabled, trying to connect to a device")
+            Log.d(LOG_TAG, "Bluetooth is enabled, trying to connect to a device")
 
             // Read stored settings
             val settings = getSharedPreferences(PREFS_NAME, 0)
@@ -104,11 +103,11 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
             val deviceMac = settings.getString("deviceMac", null)
 
             if (deviceName == null || deviceMac == null) {
-                Log.v(LOG_TAG, "No previous device found, selecting a Bluetooth device to connect to")
+                Log.d(LOG_TAG, "No previous device found, selecting a Bluetooth device to connect to")
                 selectBluetoothDevice()
             } else {
                 // Start Bluetooth connection, trying to reconnect to the stored device
-                Log.v(LOG_TAG, "Previous device found, trying to reconnect to Bluetooth device")
+                Log.d(LOG_TAG, "Previous device found, trying to reconnect to Bluetooth device")
                 startBluetoothConnection(deviceName, deviceMac)
             }
         }
@@ -187,7 +186,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
             val deviceName = devicesNames[which].toString()
             val device = getBluetoothDevice(deviceName, bondedDevices)
 
-            Toast.makeText(this, "Selected: " + deviceName, Toast.LENGTH_SHORT).show()
+            Log.d(LOG_TAG, "Selected: $deviceName")
 
             // Store info about the device
             storeDeviceInfo(device?.name, device?.address)
@@ -209,11 +208,12 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         editor.putString("deviceMac", deviceMac)
         editor.apply()
 
-        Log.i(LOG_TAG, "Stored Bluetooth device '$deviceName' at $deviceMac")
+        Log.d(LOG_TAG, "Stored Bluetooth device '$deviceName' at $deviceMac")
     }
 
 
     override fun success() {
+        Log.i(LOG_TAG, "Successfully connected to Bluetooth device")
         Toast.makeText(this, "Successfully connected to Bluetooth device", Toast.LENGTH_SHORT).show()
     }
 
@@ -222,8 +222,8 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         // ask for the device to connect to again
         storeDeviceInfo(null, null)
 
-        Toast.makeText(this, "Unable to connect to Bluetooth device", Toast.LENGTH_SHORT).show()
         Log.e(LOG_TAG, "Unable to connect to Bluetooth device")
+        Toast.makeText(this, "Unable to connect to Bluetooth device", Toast.LENGTH_SHORT).show()
 
         // Retry to start Bluetooth again
         startBT()
