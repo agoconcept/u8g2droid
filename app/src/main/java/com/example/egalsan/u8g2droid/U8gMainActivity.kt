@@ -15,6 +15,7 @@ import kotlinx.android.synthetic.main.activity_u8g_main.*
 import java.io.IOException
 import java.util.*
 import android.os.Looper
+import java.io.BufferedReader
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -182,6 +183,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
 
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Select a device to connect to")
+        builder.setCancelable(false)
         builder.setItems( devicesNames.toTypedArray(), { _, which ->
 
             // Find the BluetoothDevice
@@ -244,6 +246,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         private val socket: BluetoothSocket?
         private val inStream: InputStream?
         private val outStream: OutputStream?
+        private val bufferedReader: BufferedReader?
 
         private val handler = Handler(Looper.getMainLooper())
 
@@ -267,6 +270,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
             socket = tmpSocket
             inStream = tmpInStream
             outStream = tmpOutStream
+            bufferedReader = inStream!!.bufferedReader()
         }
 
         override fun run() {
@@ -301,17 +305,14 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         }
 
         private fun readLoop() {
-            val buffer = ByteArray(10240)
-            var numBytes: Int // bytes returned from read()
-
             // Keep listening to the InputStream until an exception occurs.
             while (true) {
                 try {
-                    // Read from the InputStream.
-                    numBytes = inStream!!.read(buffer)
+                    // Read from the InputStream
+                    val str = bufferedReader!!.readLine()
 
                     // Send message to the UI thread
-                    handler.post { btCallback.readData(String(buffer, 0, numBytes)) }
+                    handler.post { btCallback.readData(str) }
                 } catch (e: IOException) {
                     Log.d(LOG_TAG, "Input stream was disconnected", e)
                     break
