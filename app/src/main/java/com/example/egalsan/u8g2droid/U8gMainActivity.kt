@@ -18,6 +18,7 @@ import android.os.Looper
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.collections.HashMap
 
 
 class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
@@ -31,6 +32,7 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
 
     private val mBluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private val mUuid: UUID = UUID.fromString(MY_UUID)
+    private var mBtThread: U8gConnectThread? = null
 
 
     private val mOnNavigationItemSelectedListener = BottomNavigationView.OnNavigationItemSelectedListener { item ->
@@ -60,6 +62,13 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
 
         // Start Bluetooth
         startBT()
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        mBtThread!!.cancel()
     }
 
 
@@ -140,22 +149,25 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
         // Start connection as client
         val bondedDevices = mBluetoothAdapter!!.bondedDevices
         val btDevice = getBluetoothDevice(deviceName, bondedDevices)
-        val btThread = U8gConnectThread(btDevice!!, this)
-        btThread.start()
+        mBtThread = U8gConnectThread(btDevice!!, this)
+        mBtThread!!.start()
     }
 
 
-    private fun getPairedBluetoothDeviceNames(bondedDevices: Set<BluetoothDevice>): ArrayList<CharSequence> {
+    /**
+     * Returns a Hashmap with the device (including its MAC) as keys and the description of the device name as values
+     */
+    private fun getPairedBluetoothDevices(bondedDevices: Set<BluetoothDevice>): HashMap<String, String> {
 
-        val devicesNames = ArrayList<CharSequence>()
+        val devices = HashMap<String, String>()
 
         for (device in bondedDevices) {
             Log.d(LOG_TAG, "deviceName: " + device.name)
             Log.d(LOG_TAG, "deviceMAC: " + device.address)
-            devicesNames.add(device.name)
+            devices.put("${device.name} (${device.address})", device.name)
         }
 
-        return devicesNames
+        return devices
     }
 
     /**
@@ -179,16 +191,23 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
 
         // Show a list of paired devices to select
         val bondedDevices = mBluetoothAdapter!!.bondedDevices
-        val devicesNames = getPairedBluetoothDeviceNames(bondedDevices)
+        val devicesInfo = getPairedBluetoothDevices(bondedDevices)
+        val devicesNames = devicesInfo.keys.toList().sorted()
 
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Select a device to connect to")
         builder.setCancelable(false)
+        builder.setNegativeButton("Cancel", { dialog, _ -> dialog.cancel()})
+        builder.setOnCancelListener({
+            Log.e(LOG_TAG, "A device must be selected")
+            Toast.makeText(this, "A device must be selected", Toast.LENGTH_SHORT).show()
+            finish()
+        })
         builder.setItems( devicesNames.toTypedArray(), { _, which ->
 
             // Find the BluetoothDevice
-            val deviceName = devicesNames[which].toString()
-            val device = getBluetoothDevice(deviceName, bondedDevices)
+            val deviceName = devicesNames[which]
+            val device = getBluetoothDevice(devicesInfo[deviceName], bondedDevices)
 
             Log.d(LOG_TAG, "Selected: $deviceName")
 
