@@ -8,7 +8,7 @@
     tools:context="com.example.egalsan.u8g2droid.U8gMainActivity">
 
     <com.example.egalsan.u8g2droid.U8gGLSurfaceView
-        android:id="@+id/dataView"
+        android:id="@+id/glDataView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_alignParentBottom="true"
