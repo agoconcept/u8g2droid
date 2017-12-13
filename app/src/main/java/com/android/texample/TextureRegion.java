@@ -1,3 +1,5 @@
+// Imported from http://fractiousg.blogspot.com.es/2012/04/rendering-text-in-opengl-on-android.html
+
 package com.android.texample;
 
 class TextureRegion {

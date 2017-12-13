@@ -7,6 +7,8 @@
 // origin, and the (x,y) positions are relative to that, as well as the
 // bottom-left of the string to render.
 
+// Imported from http://fractiousg.blogspot.com.es/2012/04/rendering-text-in-opengl-on-android.html
+
 package com.android.texample;
 
 import javax.microedition.khronos.opengles.GL10;
