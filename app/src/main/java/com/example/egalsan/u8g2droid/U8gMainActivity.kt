@@ -15,13 +15,14 @@ import kotlinx.android.synthetic.main.activity_u8g_main.*
 import java.io.IOException
 import java.util.*
 import android.os.Looper
+import android.widget.FrameLayout
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.collections.HashMap
 
 
-class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
+class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeeder {
 
     companion object {
         const val LOG_TAG: String = "U8gMainActivity"
@@ -33,6 +34,8 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
     private val mBluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private val mUuid: UUID = UUID.fromString(MY_UUID)
     private var mBtThread: U8gConnectThread? = null
+
+    var mData: String = ""
 
 
     private val mOnNavigationItemSelectedListener = BottomNavigationView.OnNavigationItemSelectedListener { item ->
@@ -57,6 +60,11 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_u8g_main)
+
+        // Get the GL container and put the U8gGLSurfaceView on it
+        val frameLayout: FrameLayout? = findViewById(R.id.glDataView)
+        val glSurfaceView = U8gGLSurfaceView(this, this)
+        frameLayout!!.addView(glSurfaceView)
 
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener)
 
@@ -254,11 +262,20 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks {
 
     override fun readData(data: String?) {
         Log.d(LOG_TAG, data)
-        // TODO: Do more :)
+
+        // Store the data
+        mData = data.orEmpty()
     }
 
     override fun writeData(data: String?) {
         // TODO: Not implemented
+    }
+
+    override fun feedData(): String {
+        return when (mData.length == 0) {
+            true    -> "-"
+            false   -> mData
+        }
     }
 
     private inner class U8gConnectThread(private val device: BluetoothDevice, private val btCallback: U8gBluetoothCallbacks) : Thread() {

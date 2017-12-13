@@ -6,9 +6,10 @@ import android.opengl.GLSurfaceView
 import com.android.texample.GLText
 
 
-class U8gGLRenderer(context: Context) : GLSurfaceView.Renderer {
+class U8gGLRenderer(context: Context, dataFeeder: U8gDataFeeder) : GLSurfaceView.Renderer {
     private var mGlText: GLText? = null
     private val mContext: Context = context
+    private val mDataFeeder: U8gDataFeeder = dataFeeder
 
     private var mSurfaceWidth: Int = -1
     private var mSurfaceHeight: Int = -1
@@ -47,7 +48,7 @@ class U8gGLRenderer(context: Context) : GLSurfaceView.Renderer {
         mGlText!!.end()
 
         mGlText!!.begin( 1.0f, 1.0f, 1.0f, 1.0f )
-        mGlText!!.draw("Read data from BT: ", 0.0f, 0.0f)
+        mGlText!!.draw("Read data from BT: ${mDataFeeder.feedData()}", 0.0f, 0.0f)
         mGlText!!.end()
 
         // Disable texture + alpha
