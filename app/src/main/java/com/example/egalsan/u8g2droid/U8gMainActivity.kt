@@ -3,39 +3,31 @@ package com.example.egalsan.u8g2droid
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.widget.Toast
 import android.util.Log
 import android.support.v7.app.AlertDialog
-import android.bluetooth.BluetoothSocket
-import android.os.Handler
 import android.support.design.widget.BottomNavigationView
 import kotlinx.android.synthetic.main.activity_u8g_main.*
-import java.io.IOException
-import java.util.*
-import android.os.Looper
 import android.widget.FrameLayout
-import java.io.BufferedReader
-import java.io.InputStream
-import java.io.OutputStream
-import kotlin.collections.HashMap
+import android.app.ActivityManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.support.v4.content.LocalBroadcastManager
 
 
-class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeeder {
+class U8gMainActivity : AppCompatActivity(), U8gDataFeeder {
 
     companion object {
-        const val LOG_TAG: String = "U8gMainActivity"
-        const val REQUEST_ENABLE_BT: Int = 1337
-        const val PREFS_NAME: String = "u8g2droid"
-        const val MY_UUID: String = "00001101-0000-1000-8000-00805F9B34FB"
+        private const val LOG_TAG: String = "U8gMainActivity"
+        private const val REQUEST_ENABLE_BT: Int = 1337
+        private const val PREFS_NAME: String = "u8g2droid"
     }
 
-    private val mBluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-    private val mUuid: UUID = UUID.fromString(MY_UUID)
-    private var mBtThread: U8gConnectThread? = null
+    private var mBluetoothManager = U8gBluetoothManager()
 
-    var mData: String = ""
+    private var mData: String = ""
 
 
     private val mOnNavigationItemSelectedListener = BottomNavigationView.OnNavigationItemSelectedListener { item ->
@@ -61,6 +53,21 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_u8g_main)
 
+        // Instantiate a new receiver and register it
+        val receiver = BluetoothReceiver()
+
+        // Register the broadcast receiver
+        var statusIntentFilter = IntentFilter(U8gBluetoothService.READ_DATA_MSG)
+        LocalBroadcastManager.getInstance(this).registerReceiver(receiver, statusIntentFilter)
+
+        // Register the broadcast receiver
+        statusIntentFilter = IntentFilter(U8gBluetoothService.CONNECTION_ERROR_MSG)
+        LocalBroadcastManager.getInstance(this).registerReceiver(receiver, statusIntentFilter)
+
+        // Register the broadcast receiver
+        statusIntentFilter = IntentFilter(U8gBluetoothService.CONNECTION_SUCCESS_MSG)
+        LocalBroadcastManager.getInstance(this).registerReceiver(receiver, statusIntentFilter)
+
         // Get the GL container and put the U8gGLSurfaceView on it
         val frameLayout: FrameLayout? = findViewById(R.id.glDataView)
         val glSurfaceView = U8gGLSurfaceView(this, this)
@@ -68,15 +75,21 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
 
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener)
 
-        // Start Bluetooth
-        startBT()
+        // Only start the BT service if it's not already running
+        if (!isServiceRunning(U8gBluetoothService::class.java)) {
+            startBT()
+        }
     }
 
 
     override fun onDestroy() {
         super.onDestroy()
 
-        mBtThread!!.cancel()
+        // Only stop the service when the activity is really finishing
+        if (! isChangingConfigurations) {
+            val btService = Intent(this, U8gBluetoothService::class.java)
+            stopService(btService)
+        }
     }
 
 
@@ -103,14 +116,14 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
      */
     private fun startBT() {
         // Make sure Bluetooth is available
-        if (! assertBluetoothIsAvailable()) {
+        if (! mBluetoothManager.isBluetoothAvailable()) {
             Log.e(LOG_TAG, "The device does not support Bluetooth, exiting...")
             Toast.makeText(this, "The device does not support Bluetooth, exiting...", Toast.LENGTH_SHORT).show()
             finish()
         }
 
         // Make sure Bluetooth is enabled
-        if (! mBluetoothAdapter!!.isEnabled) {
+        if (mBluetoothManager.isAdapterEnabled() == false) {
             Log.d(LOG_TAG, "Bluetooth is not enabled, trying to enable it")
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
@@ -135,14 +148,6 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
 
 
     /**
-     * Make sure that Bluetooth is available
-     */
-    private fun assertBluetoothIsAvailable(): Boolean {
-        return mBluetoothAdapter != null
-    }
-
-
-    /**
      * Start a bluetooth connection to the selected device
      */
     private fun startBluetoothConnection(deviceName: String?, deviceMac: String?) {
@@ -155,42 +160,14 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
                 Toast.LENGTH_SHORT).show()
 
         // Start connection as client
-        val bondedDevices = mBluetoothAdapter!!.bondedDevices
-        val btDevice = getBluetoothDevice(deviceName, bondedDevices)
-        mBtThread = U8gConnectThread(btDevice!!, this)
-        mBtThread!!.start()
+        val btDevice = mBluetoothManager.getDeviceByName(deviceName)
+
+        // Start background service to
+        val btService = Intent(this, U8gBluetoothService::class.java)
+        btService.putExtra(U8gBluetoothService.DEVICE_ADDRESS_STR, btDevice?.address)
+        startService(btService)
     }
 
-
-    /**
-     * Returns a Hashmap with the device (including its MAC) as keys and the description of the device name as values
-     */
-    private fun getPairedBluetoothDevices(bondedDevices: Set<BluetoothDevice>): HashMap<String, String> {
-
-        val devices = HashMap<String, String>()
-
-        for (device in bondedDevices) {
-            Log.d(LOG_TAG, "deviceName: " + device.name)
-            Log.d(LOG_TAG, "deviceMAC: " + device.address)
-            devices.put("${device.name} (${device.address})", device.name)
-        }
-
-        return devices
-    }
-
-    /**
-     * Find a BluetoothDevice from its name
-     */
-    private fun getBluetoothDevice(deviceName: String?, bondedDevices: Set<BluetoothDevice>): BluetoothDevice? {
-
-        val iter = bondedDevices.iterator()
-        while (iter.hasNext()) {
-            val device = iter.next()
-            if (device.name == deviceName)
-                return device
-        }
-        return null
-    }
 
     /**
      * Select a Bluetooth device from a list and store the selection
@@ -198,9 +175,13 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
     private fun selectBluetoothDevice() {
 
         // Show a list of paired devices to select
-        val bondedDevices = mBluetoothAdapter!!.bondedDevices
-        val devicesInfo = getPairedBluetoothDevices(bondedDevices)
-        val devicesNames = devicesInfo.keys.toList().sorted()
+        val devices = mBluetoothManager.getDevices()
+
+        // Create formatted list
+        val devicesNames: ArrayList<String> = ArrayList()
+        for (device in devices) {
+            devicesNames.add("${device[1]} (${device[0]})")
+        }
 
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Select a device to connect to")
@@ -214,10 +195,9 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
         builder.setItems( devicesNames.toTypedArray(), { _, which ->
 
             // Find the BluetoothDevice
-            val deviceName = devicesNames[which]
-            val device = getBluetoothDevice(devicesInfo[deviceName], bondedDevices)
+            val device = mBluetoothManager.getDeviceByAddress(devices[which][0])
 
-            Log.d(LOG_TAG, "Selected: $deviceName")
+            Log.d(LOG_TAG, "Selected: ${devices[which][1]} (${devices[which][0]})")
 
             // Store info about the device
             storeDeviceInfo(device?.name, device?.address)
@@ -242,129 +222,55 @@ class U8gMainActivity : AppCompatActivity(), U8gBluetoothCallbacks, U8gDataFeede
         Log.d(LOG_TAG, "Stored Bluetooth device '$deviceName' at $deviceMac")
     }
 
-
-    override fun connectionSuccess() {
-        Log.i(LOG_TAG, "Successfully connected to Bluetooth device")
-        Toast.makeText(this, "Successfully connected to Bluetooth device", Toast.LENGTH_SHORT).show()
+    /**
+     * Check if a service is running
+     */
+    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        manager.getRunningServices(Integer.MAX_VALUE).forEach { service ->
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
     }
 
-    override fun connectionError() {
-        // Clean the information about the stored device, so next time it will
-        // ask for the device to connect to again
-        storeDeviceInfo(null, null)
 
-        Log.e(LOG_TAG, "Unable to connect to Bluetooth device")
-        Toast.makeText(this, "Unable to connect to Bluetooth device", Toast.LENGTH_SHORT).show()
+    inner class BluetoothReceiver: BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.i(LOG_TAG, "intent: $intent")
 
-        // Retry to start Bluetooth again
-        startBT()
-    }
+            when (intent?.action) {
 
-    override fun readData(data: String?) {
-        Log.d(LOG_TAG, data)
+                U8gBluetoothService.CONNECTION_SUCCESS_MSG -> {
+                    Log.i(LOG_TAG, "Successfully connected to Bluetooth device")
+                    Toast.makeText(this@U8gMainActivity, "Successfully connected to Bluetooth device", Toast.LENGTH_SHORT).show()
+                }
 
-        // Store the data
-        mData = data.orEmpty()
-    }
+                U8gBluetoothService.CONNECTION_ERROR_MSG -> {
+                    // Clean the information about the stored device, so next time it will
+                    // ask for the device to connect to again
+                    storeDeviceInfo(null, null)
 
-    override fun writeData(data: String?) {
-        // TODO: Not implemented
+                    Log.e(LOG_TAG, "Unable to connect to Bluetooth device")
+                    Toast.makeText(this@U8gMainActivity, "Unable to connect to Bluetooth device", Toast.LENGTH_SHORT).show()
+
+                    // Retry to start Bluetooth again
+                    startBT()
+                }
+
+                U8gBluetoothService.READ_DATA_MSG -> {
+                    val data = intent?.getStringExtra(U8gBluetoothService.DATA_STR)
+                    mData = data.orEmpty()
+                }
+            }
+        }
     }
 
     override fun feedData(): String {
         return when (mData.length == 0) {
             true    -> "-"
             false   -> mData
-        }
-    }
-
-    private inner class U8gConnectThread(private val device: BluetoothDevice, private val btCallback: U8gBluetoothCallbacks) : Thread() {
-        private val socket: BluetoothSocket?
-        private val inStream: InputStream?
-        private val outStream: OutputStream?
-        private val bufferedReader: BufferedReader?
-
-        private val handler = Handler(Looper.getMainLooper())
-
-        init {
-            // Use temporary objects that are later assigned variables are final
-            var tmpSocket: BluetoothSocket? = null
-            var tmpInStream: InputStream? = null
-            var tmpOutStream: OutputStream? = null
-
-            try {
-                // Get a BluetoothSocket to connect with the given BluetoothDevice.
-                // MY_UUID is the app's UUID string, also used in the server code.
-                tmpSocket = device.createRfcommSocketToServiceRecord(mUuid)
-
-                tmpInStream = tmpSocket.inputStream
-                tmpOutStream = tmpSocket.outputStream
-            } catch (e: IOException) {
-                Log.e(LOG_TAG, "Bluetooth socket IO failed", e)
-            }
-
-            socket = tmpSocket
-            inStream = tmpInStream
-            outStream = tmpOutStream
-            bufferedReader = inStream!!.bufferedReader()
-        }
-
-        override fun run() {
-            // Cancel discovery because it otherwise slows down the connection.
-            mBluetoothAdapter!!.cancelDiscovery()
-
-            try {
-                // Connect to the remote device through the socket. This call blocks
-                // until it succeeds or throws an exception.
-                socket!!.connect()
-            } catch (connectException: IOException) {
-                Log.e(LOG_TAG, "Could not connect the client socket", connectException)
-                // Unable to connect; close the socket and return.
-                try {
-                    // Run on the UI thead
-                    handler.post { btCallback.connectionError() }
-
-                    socket!!.close()
-
-                } catch (closeException: IOException) {
-                    Log.e(LOG_TAG, "Could not close the client socket", closeException)
-                }
-
-                return
-            }
-
-            // Run on the UI thread
-            handler.post { btCallback.connectionSuccess() }
-
-            // Start the read loop
-            readLoop()
-        }
-
-        private fun readLoop() {
-            // Keep listening to the InputStream until an exception occurs.
-            while (true) {
-                try {
-                    // Read from the InputStream
-                    val str = bufferedReader!!.readLine()
-
-                    // Send message to the UI thread
-                    handler.post { btCallback.readData(str) }
-                } catch (e: IOException) {
-                    Log.d(LOG_TAG, "Input stream was disconnected", e)
-                    break
-                }
-            }
-        }
-
-        // Closes the client socket and causes the thread to finish.
-        fun cancel() {
-            try {
-                Log.v(LOG_TAG, "Closing connection with Bluetooth device '" + device.name + "' at " + device.address)
-                socket!!.close()
-            } catch (e: IOException) {
-                Log.e(LOG_TAG, "Could not close the client socket", e)
-            }
-
         }
     }
 }
